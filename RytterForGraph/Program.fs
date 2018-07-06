@@ -37,7 +37,7 @@ let powM (m:Set<_> [,]) n =
             _go (matMultiply m m) (_n*2)
 
     let res =_go m 1
-    printfn "Steps in powM = %A" steps
+    //printfn "Steps in powM = %A" steps
     res
 
 let transpose (m:Set<_> [,]) = 
@@ -54,22 +54,99 @@ let toDot graph file =
 
     System.IO.File.WriteAllText(file, "digraph g{" + edgs + "}")
 
+let eval graph grammar = 
+
+    let mutable graph = graph
+
+    let vrts = new System.Collections.Generic.HashSet<_>()
+
+    let n = 
+        graph |> Set.iter (fun (i,_,j) -> vrts.Add i |> ignore; vrts.Add j |> ignore)
+        vrts.Count
+
+    let Id = [|("A","A"); ("B","B"); ("S1","S1"); ("S","S")|] |> Set.ofArray    
+
+    let mutable c = true
+
+    let mutable steps = 0
+
+    while c do
+        //toDot graph (sprintf "dot/result_%i.dot" steps)
+        let X,V,H =        
+            let V = Array2D.init n n (fun _ _ -> Set.empty)
+            let H = Array2D.init n n (fun _ _ -> Set.empty)
+            let X = Array2D.init n n (fun _ _ -> Set.empty)
+            for (i,t,j) in graph do
+                X.[i,j] <- Set.add (t,t) X.[i,j]
+                for (n1,n2,n3) in grammar do
+                    if t = n2
+                    then V.[i,j] <- Set.add (n3, n1) V.[i,j] 
+                    if t = n3
+                    then H.[i,j] <- Set.add (n2, n1) H.[i,j]
+            for i in 0..n-1 do 
+                H.[i,i] <- Set.union Id H.[i,i]
+                V.[i,i] <- Set.union Id V.[i,i]
+
+            X,V,H
+
+        let Vn = powM V (n*n)
+        let Hn = powM H (n*n)
+
+        let t = transpose
+        let m = matMultiply
+
+        let rec r X k = 
+            if k = 0 
+            then X
+            else 
+                let X = 
+                    let p1 =  (m (t (m (t X) (t Vn))) Hn)
+                    let p2 = t (m (t (m X Hn)) (t Vn))
+                    [
+                        p1
+                        p2
+                    ]                
+                    |> List.reduce matSum
+                r X (k-1)
+                
+        let r = r X (int (System.Math.Log(float (n*n), 2.0)) + 1)
+        let oldSize = graph.Count
+        r |> Array2D.iteri(fun i j n ->  graph <- Set.union (n |> Set.map (fun (_,n1) -> (i,n1,j))) graph)
+                   
+        //printfn "%A" graph
+        
+        steps <- steps + 1
+
+        c <- oldSize <> graph.Count
+    graph,steps
+
+let genGraph n =
+    (2 * n + 1, "B", n) :: (n,"A",0)::[for i in 0 .. n - 1 -> (i, "A", i+1)]
+    @ [for i in 0 .. n -> (n + i, "B", n + i + 1)]
+    |> Set.ofList
+
 [<EntryPoint>]
 let main argv =     
-    let n = 10
+    let n = 16
     let mutable graph = 
         [|
             (0,"A",1)
             (1,"A",8)
             (8,"A",9)
-            (9,"A",2)
+            (9,"A",10)
+            (10,"A",11)
+            (11,"A",12)
+            (12,"A",2)
             (2,"A",3)
             (3,"A",0)
             (3,"B",4)
             (4,"B",5)
             (5,"B",6)
             (6,"B",7)
-            (7,"B",3)
+            (7,"B",13)
+            (13,"B",14)
+            (14,"B",15)
+            (15,"B",3)
         |]
 //        [|
 //            (0,"A",1)
@@ -91,111 +168,12 @@ let main argv =
 //            ("B","b")
 //        |]
 
-    let Id = [|("A","A"); ("B","B"); ("S1","S1"); ("S","S")|] |> Set.ofArray
-    printfn "1 %A" (multSet Id Set.empty)
-    printfn "2 %A" (multSet Set.empty Id )
-
-    let mutable c = true
-
-    let mutable steps = 0
-
-    while c do
-        toDot graph (sprintf "dot/result_%i.dot" steps)
-        let X,V,H =        
-            let V = Array2D.init n n (fun _ _ -> Set.empty)
-            let H = Array2D.init n n (fun _ _ -> Set.empty)
-            let X = Array2D.init n n (fun _ _ -> Set.empty)
-            for (i,t,j) in graph do
-                X.[i,j] <- Set.add (t,t) X.[i,j]
-                for (n1,n2,n3) in grammar do
-                    if t = n2
-                    then V.[i,j] <- Set.add (n3, n1) V.[i,j] 
-                    if t = n3
-                    then H.[i,j] <- Set.add (n2, n1) H.[i,j]
-            for i in 0..n-1 do 
-                H.[i,i] <- Set.union Id H.[i,i]
-                V.[i,i] <- Set.union Id V.[i,i]
-
-            X,V,H
-
-        let Vn = powM V (n*n)
-        let Hn = powM H (n*n)
-
-        let r = 
-            let t = transpose
-            let m = matMultiply
-            let X =
-                let p1 =  (m (t (m (t X) (t Vn))) Hn)
-                let p2 = t (m (t (m X Hn)) (t Vn))
-                [
-                    p1
-                    p2
-                    //t (m (t X) (t Vn))
-                    //(m X Hn)
-                ]
-                //|> List.map (fun m -> matMultiply X m)
-                |> List.reduce matSum 
-            let X =
-                let p1 =  (m (t (m (t X) (t Vn))) Hn)
-                let p2 = t (m (t (m X Hn)) (t Vn))
-                [
-                    p1
-                    p2
-                    //t (m (t X) (t Vn))
-                    //(m X Hn)
-                ]
-                //|> List.map (fun m -> matMultiply X m)
-                |> List.reduce matSum
-            let X =
-                let p1 =  (m (t (m (t X) (t Vn))) Hn)
-                let p2 = t (m (t (m X Hn)) (t Vn))
-                [
-                    p1
-                    p2
-                    //t (m (t X) (t Vn))
-                    //(m X Hn)
-                ]
-                //|> List.map (fun m -> matMultiply X m)
-                |> List.reduce matSum
-            let X =
-                let p1 =  (m (t (m (t X) (t Vn))) Hn)
-                let p2 = t (m (t (m X Hn)) (t Vn))
-                [
-                    p1
-                    p2
-                    //t (m (t X) (t Vn))
-                    //(m X Hn)
-                ]
-                //|> List.map (fun m -> matMultiply X m)
-                |> List.reduce matSum
-            let p1 =  (m (t (m (t X) (t Vn))) Hn)
-            let p2 = t (m (t (m X Hn)) (t Vn))
-            [
-                p1
-                p2
-            ]
-            |> List.reduce matSum 
-                
-
-//            let part = (matMultiply X (powM (matMultiply Hn Vn) (n*n)))
-//            matSum part
-//                   (matMultiply (matSum X part) (powM (matMultiply Vn Hn) (n*n)))
-//
-
-//            let part = (matMultiply Hn Vn) ()
-//            matSum part
-//                   (matMultiply (matSum X part) (powM (matMultiply Vn Hn) n))
-
-        let oldSize = graph.Count
-        r |> Array2D.iteri(fun i j n ->  graph <- Set.union (n |> Set.map (fun (_,n1) -> (i,n1,j))) graph)
-                   
-        printfn "%A" graph
-        
-        steps <- steps + 1
-
-        c <- oldSize <> graph.Count
-
-    printfn "Total steps = %A" steps
-    toDot graph "result.dot" 
+    //let g = genGraph 2
+    //toDot g "r.dot" 
+    for i in 2 .. 5 .. 100 do
+        let graph = genGraph i
+        let graph,steps = eval graph grammar
+        printfn "Total steps for n=%A = %A" (2*(i+1)+1) steps
+    //toDot graph "result.dot" 
 
     0 // return an integer exit code
