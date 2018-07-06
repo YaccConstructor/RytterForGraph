@@ -3,19 +3,17 @@
 
 open System.Collections.Generic
 
-let mult p1 p2 =
+let inline mult p1 p2 =
     match p1,p2 with
     | (x,y),(a,b) when y = a -> Some (x,b)
     | _ -> None
 
-let multSet s1 s2 =
+let inline multSet s1 s2 =
     let res = new HashSet<_>()
     s1 |> Seq.iter (fun e1 -> s2 |> Seq.iter (fun e2 -> 
             let r = mult e1 e2
             if r.IsSome
             then res.Add r.Value |> ignore))
-//    |> Seq.concat
-//    |> fun s -> new HashSet<_>(s)
     res
         
 let matSum (m1:HashSet<_> [,]) (m2:HashSet<_> [,]) =
@@ -112,14 +110,10 @@ let eval (graph:seq<_>) grammar =
                 let X = 
                     let p1 =  (m (t (m (t X) (t Vn))) Hn)
                     let p2 = t (m (t (m X Hn)) (t Vn))
-                    [
-                        p1
-                        p2
-                    ]                
-                    |> List.reduce matSum
+                    matSum p1 p2
                 r X (k-1)
                 
-        let r = r X (int (System.Math.Log(float (n*n), 2.0)) + 1)
+        let r = r X (int (System.Math.Log(float (n*n), 2.0)) * int (System.Math.Log(float (n*n), 2.0)))
         let oldSize = graph.Count
         r |> Array2D.iteri(fun i j n ->  graph.UnionWith (n |> Seq.map (fun (_,n1) -> (i,n1,j))))
                    
@@ -144,7 +138,7 @@ let main argv =
             ("S","A","B")
         |]
 
-    for i in 2 .. 4 .. 100 do
+    for i in 2 .. 1 .. 100 do
         let graph = genGraph i
         let graph,steps = eval graph grammar
         printfn "Total steps for n=%A = %A" (2*(i+1)+1) steps
