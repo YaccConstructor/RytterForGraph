@@ -1,33 +1,43 @@
 ﻿// Learn more about F# at http://fsharp.org
 // See the 'F# Tutorial' project for more help.
 
+open System.Collections.Generic
+
 let mult p1 p2 =
     match p1,p2 with
     | (x,y),(a,b) when y = a -> Some (x,b)
     | _ -> None
 
 let multSet s1 s2 =
-    s1 |> Seq.map (fun e1 -> s2 |> Set.map (fun e2 -> mult e1 e2) |> Set.filter (fun x -> x.IsSome) |> Set.map (fun x -> x.Value))
-    |> Set.unionMany
+    let res = new HashSet<_>()
+    s1 |> Seq.iter (fun e1 -> s2 |> Seq.iter (fun e2 -> 
+            let r = mult e1 e2
+            if r.IsSome
+            then res.Add r.Value |> ignore))
+//    |> Seq.concat
+//    |> fun s -> new HashSet<_>(s)
+    res
         
-let matSum (m1:Set<_> [,]) (m2:Set<_> [,]) =
-    let res = Array2D.init (m1.GetLength 0) (m1.GetLength 0) (fun _ _ -> Set.empty)
+let matSum (m1:HashSet<_> [,]) (m2:HashSet<_> [,]) =
+    let res = Array2D.init (m1.GetLength 0) (m1.GetLength 0) (fun _ _ -> new HashSet<_>())
     for i in 0..(m1.GetLength 0) - 1 do
         for j in 0..(m1.GetLength 0) - 1 do        
-            res.[i,j] <- Set.union m1.[i,j] m2.[i,j]
+            res.[i,j].UnionWith m1.[i,j]
+            res.[i,j].UnionWith m2.[i,j]
     res
 
-let matMultiply (m1:Set<_> [,]) (m2:Set<_> [,]) =
-    let res = Array2D.init (m1.GetLength 0) (m1.GetLength 0) (fun _ _ -> Set.empty)
-    for i in 0..(m1.GetLength 0) - 1 do        
+let matMultiply (m1:HashSet<_> [,]) (m2:HashSet<_> [,]) =
+    let res = Array2D.init (m1.GetLength 0) (m1.GetLength 0) (fun _ _ -> new HashSet<_>())
+    [|0..(m1.GetLength 0) - 1|]
+    |> Array.Parallel.iter(fun i ->        
         for j in 0..(m1.GetLength 0) - 1 do
-            let mutable sum = Set.empty
+            let mutable sum = new HashSet<_>()
             for k in 0..(m1.GetLength 0) - 1 do
-                sum <- Set.union sum (multSet m1.[i,k] m2.[k,j])
-            res.[i,j] <- sum
+                sum.UnionWith (multSet m1.[i,k] m2.[k,j])
+            res.[i,j] <- sum)
     res
     
-let powM (m:Set<_> [,]) n =
+let powM (m:HashSet<_> [,]) n =
     let mutable steps = 0
     let rec _go _m _n =
         if _n >= n
@@ -40,8 +50,8 @@ let powM (m:Set<_> [,]) n =
     //printfn "Steps in powM = %A" steps
     res
 
-let transpose (m:Set<_> [,]) = 
-    let res = Array2D.init (m.GetLength 0) (m.GetLength 0) (fun _ _ -> Set.empty)
+let transpose (m:HashSet<_> [,]) = 
+    let res = Array2D.init (m.GetLength 0) (m.GetLength 0) (fun _ _ -> new HashSet<_>())
     m |> Array2D.iteri (fun i j n -> res.[j,i] <- n)
     res
 
@@ -54,17 +64,17 @@ let toDot graph file =
 
     System.IO.File.WriteAllText(file, "digraph g{" + edgs + "}")
 
-let eval graph grammar = 
+let eval (graph:seq<_>) grammar = 
 
-    let mutable graph = graph
+    let graph = new HashSet<_>(graph)
 
     let vrts = new System.Collections.Generic.HashSet<_>()
 
     let n = 
-        graph |> Set.iter (fun (i,_,j) -> vrts.Add i |> ignore; vrts.Add j |> ignore)
+        graph |> Seq.iter (fun (i,_,j) -> vrts.Add i |> ignore; vrts.Add j |> ignore)
         vrts.Count
 
-    let Id = [|("A","A"); ("B","B"); ("S1","S1"); ("S","S")|] |> Set.ofArray    
+    let Id = new HashSet<_> [|("A","A"); ("B","B"); ("S1","S1"); ("S","S")|] 
 
     let mutable c = true
 
@@ -73,19 +83,19 @@ let eval graph grammar =
     while c do
         //toDot graph (sprintf "dot/result_%i.dot" steps)
         let X,V,H =        
-            let V = Array2D.init n n (fun _ _ -> Set.empty)
-            let H = Array2D.init n n (fun _ _ -> Set.empty)
-            let X = Array2D.init n n (fun _ _ -> Set.empty)
+            let V = Array2D.init n n (fun _ _ -> new HashSet<_>())
+            let H = Array2D.init n n (fun _ _ -> new HashSet<_>())
+            let X = Array2D.init n n (fun _ _ -> new HashSet<_>())
             for (i,t,j) in graph do
-                X.[i,j] <- Set.add (t,t) X.[i,j]
+                X.[i,j].Add(t,t)  |> ignore
                 for (n1,n2,n3) in grammar do
                     if t = n2
-                    then V.[i,j] <- Set.add (n3, n1) V.[i,j] 
+                    then V.[i,j].Add(n3, n1) |> ignore
                     if t = n3
-                    then H.[i,j] <- Set.add (n2, n1) H.[i,j]
+                    then H.[i,j].Add (n2, n1) |> ignore
             for i in 0..n-1 do 
-                H.[i,i] <- Set.union Id H.[i,i]
-                V.[i,i] <- Set.union Id V.[i,i]
+                H.[i,i].UnionWith Id
+                V.[i,i].UnionWith Id
 
             X,V,H
 
@@ -111,7 +121,7 @@ let eval graph grammar =
                 
         let r = r X (int (System.Math.Log(float (n*n), 2.0)) + 1)
         let oldSize = graph.Count
-        r |> Array2D.iteri(fun i j n ->  graph <- Set.union (n |> Set.map (fun (_,n1) -> (i,n1,j))) graph)
+        r |> Array2D.iteri(fun i j n ->  graph.UnionWith (n |> Seq.map (fun (_,n1) -> (i,n1,j))))
                    
         //printfn "%A" graph
         
@@ -127,50 +137,14 @@ let genGraph n =
 
 [<EntryPoint>]
 let main argv =     
-    let n = 16
-    let mutable graph = 
-        [|
-            (0,"A",1)
-            (1,"A",8)
-            (8,"A",9)
-            (9,"A",10)
-            (10,"A",11)
-            (11,"A",12)
-            (12,"A",2)
-            (2,"A",3)
-            (3,"A",0)
-            (3,"B",4)
-            (4,"B",5)
-            (5,"B",6)
-            (6,"B",7)
-            (7,"B",13)
-            (13,"B",14)
-            (14,"B",15)
-            (15,"B",3)
-        |]
-//        [|
-//            (0,"A",1)
-//            (1,"A",0)
-//            (1,"B",2)
-//            (2,"B",3)
-//            (3,"B",1)
-//        |]
-        |> Set.ofArray
-
     let grammar =
         [|
             ("S","A","S1")
             ("S1","S","B")
             ("S","A","B")
         |]
-//        ,[|
-//            ("A","a")
-//            ("B","b")
-//        |]
 
-    //let g = genGraph 2
-    //toDot g "r.dot" 
-    for i in 2 .. 5 .. 100 do
+    for i in 2 .. 4 .. 100 do
         let graph = genGraph i
         let graph,steps = eval graph grammar
         printfn "Total steps for n=%A = %A" (2*(i+1)+1) steps
